@@ -1,0 +1,499 @@
+% 'draft' mode can be used to speed up compilation
+\documentclass[twoside,final]{hcmut-report}
+\usepackage{codespace}
+
+% Encodings
+\usepackage{gensymb,textcomp}
+
+% Better tables
+\usepackage{array,longtable,multicol,multirow,siunitx,tabularx}
+
+% Better enum
+\usepackage{enumitem}
+
+% Graphics
+\usepackage{caption,float}
+
+% Add options for figures, like max width, framing, etc.
+\usepackage[export]{adjustbox}
+
+% References
+\usepackage[nameinlink]{cleveref}
+
+% Math
+\usepackage{amsmath,amssymb}
+
+% Tikz for flowchart
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric, arrows.meta, positioning}
+
+% Configurations
+\coursename{Kiến trúc Máy tính -- CO2008}
+\reporttype{Báo cáo Bài tập Lớn}
+\title{Lọc Tín Hiệu và Dự Đoán với Bộ Lọc Wiener\\
+       \large Filtering and Prediction Signal with Wiener Filter}
+\advisor{& [Tên giảng viên hướng dẫn] &}
+\stuname{%
+  & [Họ và tên] & [MSSV] \\
+}
+
+\AtBeginDocument{\counterwithin{lstlisting}{section}}
+
+\begin{document}
+\coverpage%
+
+\clearpage
+
+\tableofcontents
+\clearpage
+
+% =================================================================
+\section{Giới thiệu}
+% =================================================================
+
+Bài tập lớn này thuộc môn Kiến trúc Máy tính (CO2008), yêu cầu em
+cài đặt bộ lọc Wiener bậc $M = 2$ bằng hợp ngữ MIPS, chạy trên phần mềm
+mô phỏng MARS 4.5.
+
+Ý tưởng của bài toán là: cho trước một tín hiệu đầu vào $x(n)$ (thường là
+tổng của tín hiệu gốc và nhiễu) và một tín hiệu mong muốn $d(n)$, thiết kế
+bộ lọc FIR có 2 hệ số $h_0$, $h_1$ sao cho đầu ra $y(n)$ xấp xỉ $d(n)$
+theo tiêu chí sai số bình phương trung bình nhỏ nhất (MMSE). Đây là bài
+toán Wiener-Hopf cổ điển trong xử lý tín hiệu số.
+
+Chương trình cần thực hiện các bước sau:
+\begin{enumerate}
+  \item Đọc dữ liệu từ hai file \texttt{desired.txt} và \texttt{input.txt}.
+  \item Kiểm tra kích thước hai tín hiệu có khớp nhau không.
+  \item Tính hệ số tối ưu $h_0$, $h_1$ theo phương trình Wiener-Hopf.
+  \item Lọc tín hiệu đầu vào để được $y(n)$.
+  \item Tính MMSE giữa $d(n)$ và $y(n)$.
+  \item Xuất kết quả ra terminal và file \texttt{output.txt} đúng định dạng.
+\end{enumerate}
+
+% =================================================================
+\section{Cơ sở lý thuyết}
+% =================================================================
+
+\subsection{Bộ lọc FIR và bài toán MMSE}
+
+Bộ lọc FIR bậc $M$ có đầu ra:
+\begin{equation}
+  y(n) = \sum_{k=0}^{M-1} h_k \cdot x(n-k)
+\end{equation}
+
+Trong bài này $M = 2$, nên:
+\begin{equation}
+  y(n) = h_0 \cdot x(n) + h_1 \cdot x(n-1), \quad
+  y(0) = h_0 \cdot x(0)
+\end{equation}
+
+Tiêu chí tối ưu là tối thiểu hóa sai số bình phương trung bình:
+\begin{equation}
+  \text{MMSE} = \frac{1}{N}\sum_{n=0}^{N-1}\bigl(d(n) - y(n)\bigr)^2
+  \longrightarrow \min
+\end{equation}
+
+\subsection{Phương trình Wiener-Hopf}
+
+Lấy đạo hàm điều kiện tối ưu và đặt bằng 0 ta được hệ phương trình
+Wiener-Hopf dạng ma trận $\mathbf{R}\,\mathbf{h} = \boldsymbol{\gamma}_d$,
+trong đó:
+
+\begin{equation}
+  \mathbf{R} = \begin{pmatrix} r_0 & r_1 \\ r_1 & r_0 \end{pmatrix}, \quad
+  \boldsymbol{\gamma}_d = \begin{pmatrix} g_{d0} \\ g_{d1} \end{pmatrix}
+\end{equation}
+
+Các đại lượng tương quan được tính từ dữ liệu như sau:
+\begin{align}
+  r_0    &= \frac{1}{N}\sum_{n=0}^{N-1} x(n)^2
+           & \text{(tự tương quan bậc 0)} \\[4pt]
+  r_1    &= \frac{1}{N}\sum_{n=1}^{N-1} x(n)\,x(n-1)
+           & \text{(tự tương quan bậc 1)} \\[4pt]
+  g_{d0} &= \frac{1}{N}\sum_{n=0}^{N-1} d(n)\,x(n)
+           & \text{(tương quan chéo bậc 0)} \\[4pt]
+  g_{d1} &= \frac{1}{N}\sum_{n=1}^{N-1} d(n)\,x(n-1)
+           & \text{(tương quan chéo bậc 1)}
+\end{align}
+
+Nghiệm tối ưu theo quy tắc Cramer:
+\begin{equation}
+  \det(\mathbf{R}) = r_0^2 - r_1^2
+\end{equation}
+\begin{align}
+  h_0 &= \frac{r_0\,g_{d0} - r_1\,g_{d1}}{\det(\mathbf{R})} \\
+  h_1 &= \frac{r_0\,g_{d1} - r_1\,g_{d0}}{\det(\mathbf{R})}
+\end{align}
+
+\subsection{Định dạng xuất kết quả}
+
+Dựa theo hình minh họa trong đề bài (Figure 3):
+\begin{itemize}
+  \item Dòng 1: \texttt{Filtered output:} kèm theo $N$ giá trị, giá trị đầu
+        chiếm 8 ký tự, các giá trị tiếp theo chiếm 10 ký tự, tất cả có
+        4 chữ số thập phân (căn phải).
+  \item Dòng 2: \texttt{MMSE: } kèm theo giá trị MMSE có 4 chữ số thập phân.
+  \item Nếu kích thước hai file không khớp, chỉ in: \texttt{Error: size not match}.
+  \item Nội dung in ra terminal và ghi vào \texttt{output.txt} phải giống nhau.
+\end{itemize}
+
+% =================================================================
+\section{Thiết kế và cài đặt}
+% =================================================================
+
+\subsection{Lưu đồ thuật toán tổng quát}
+
+\begin{figure}[H]
+  \centering
+  \begin{tikzpicture}[
+    node distance=0.7cm,
+    box/.style={rectangle, draw, rounded corners, minimum width=5.5cm,
+                minimum height=0.75cm, align=center, font=\small},
+    decision/.style={diamond, draw, aspect=2.5, align=center, font=\small,
+                     inner sep=1pt},
+    arrow/.style={-Latex}
+  ]
+    \node[box, fill=gray!20] (start) {Bắt đầu};
+    \node[box, below=of start] (read) {Đọc \texttt{desired.txt} và \texttt{input.txt}};
+    \node[decision, below=of read] (check) {Kích thước\\bằng nhau?};
+    \node[box, right=2cm of check, fill=red!15] (err) {In ``Error: size not match''\\vào terminal và file};
+    \node[decision, below=of check] (checkN) {$N = 0$?};
+    \node[box, below=of checkN] (wiener) {Tính $r_0, r_1, g_{d0}, g_{d1}$\\rồi giải Wiener-Hopf $\Rightarrow h_0, h_1$};
+    \node[box, below=of wiener] (filter) {Lọc tín hiệu: $y(n) = h_0 x(n) + h_1 x(n-1)$};
+    \node[box, below=of filter] (mmse) {Tính MMSE $= \frac{1}{N}\sum(d(n)-y(n))^2$};
+    \node[box, below=of mmse] (print) {In kết quả ra terminal và \texttt{output.txt}};
+    \node[box, below=of print, fill=gray!20] (end) {Kết thúc};
+
+    \draw[arrow] (start) -- (read);
+    \draw[arrow] (read)  -- (check);
+    \draw[arrow] (check) -- node[right, font=\small]{Không} (err);
+    \draw[arrow] (check) -- node[left,  font=\small]{Có} (checkN);
+    \draw[arrow] (checkN) -- node[right, font=\small]{Có} (err);
+    \draw[arrow] (checkN) -- node[left,  font=\small]{Không} (wiener);
+    \draw[arrow] (wiener) -- (filter);
+    \draw[arrow] (filter) -- (mmse);
+    \draw[arrow] (mmse)   -- (print);
+    \draw[arrow] (print)  -- (end);
+    \draw[arrow] (err.south) -- ++(0,-0.3) -| (end.east);
+  \end{tikzpicture}
+  \caption{Lưu đồ thuật toán chính của chương trình}
+  \label{fig:flowchart}
+\end{figure}
+
+\subsection{Cấu trúc các chương trình con}
+
+Chương trình được chia thành 6 chương trình con để dễ quản lý và debug,
+tương ứng với từng bước trong lưu đồ trên.
+
+\begin{table}[H]
+  \centering
+  \caption{Danh sách các chương trình con}
+  \label{tab:subroutines}
+  \begin{tabularx}{\linewidth}{lX}
+    \toprule
+    \textbf{Nhãn} & \textbf{Chức năng} \\
+    \midrule
+    \texttt{main}            & Điều phối luồng chính: đọc file, kiểm tra kích thước,
+                               gọi các hàm con, mở/đóng file output \\
+    \texttt{parse\_floats}   & Phân tích chuỗi ASCII sang mảng số thực 32-bit
+                               (xử lý dấu, phần nguyên, phần thập phân) \\
+    \texttt{compute\_wiener} & Tính 4 đại lượng tương quan, định thức và hệ số
+                               $h_0$, $h_1$ theo Wiener-Hopf \\
+    \texttt{compute\_output} & Tính tín hiệu đầu ra $y(n)$ dùng $h_0$, $h_1$ \\
+    \texttt{compute\_mmse}   & Tính sai số MMSE giữa $d(n)$ và $y(n)$ \\
+    \texttt{print\_results}  & Xuất kết quả ra terminal và file đúng định dạng \\
+    \texttt{fmt\_float\_w}   & Định dạng số thực thành chuỗi có độ rộng cố định \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\subsection{Vùng dữ liệu (.data) và căn chỉnh bộ nhớ}
+
+Các biến bắt buộc theo đề bài được khai báo đúng tên trong vùng \texttt{.data}.
+Điểm cần lưu ý là trong MARS, chỉ thị \texttt{.space} \textbf{không} tự
+động căn chỉnh bộ nhớ 4 byte như \texttt{.float} hay \texttt{.word}. Do
+các chuỗi tên file trước mảng float có tổng $33$ byte (lẻ, không chia hết
+cho 4), cần thêm \texttt{.align~2} để tránh lỗi ``store address not aligned''.
+
+\begin{lstlisting}[language={}, caption={Khai báo các biến bắt buộc trong .data}]
+desired_fname:        .asciiz "desired.txt"
+input_fname:          .asciiz "input.txt"
+output_fname:         .asciiz "output.txt"
+
+.align 2                          # can chinh 4 byte cho mang float
+desired_signal:       .space 40  # 10 x float32 -- ten bat buoc theo de
+input_signal:         .space 40  # 10 x float32 -- ten bat buoc theo de
+optimize_coefficient: .space 8   # h0, h1       -- ten bat buoc theo de
+mmse:                 .float 0.0 #               -- ten bat buoc theo de
+output_signal:        .space 40  # 10 x float32 -- ten bat buoc theo de
+\end{lstlisting}
+
+\subsection{Phân tích số thực từ file (parse\_floats)}
+
+Vì MARS không có sẵn hàm đọc số thực từ file, em tự viết parser
+bằng cách đọc file vào buffer ASCII rồi phân tích từng ký tự:
+
+\begin{enumerate}
+  \item Bỏ qua khoảng trắng (space, tab, ký tự xuống dòng LF/CR).
+  \item Kiểm tra dấu \texttt{'-'} nếu có.
+  \item Phần nguyên: cộng dồn chữ số (mỗi bước nhân tích lũy với 10).
+  \item Phần thập phân: dùng biến \texttt{scale} bắt đầu từ $0.1$,
+        mỗi chữ số thập phân chia \texttt{scale} thêm cho 10.
+  \item Giới hạn tối đa 10 phần tử để không ghi tràn vào vùng nhớ liền kề.
+\end{enumerate}
+
+\begin{lstlisting}[language={}, caption={Pseudo-code của parse\_floats}]
+scale = 1.0 / 10.0    # = 0.1
+for each fractional digit d:
+    value += d * scale
+    scale /= 10.0
+
+# Bao ve: dung truoc neu da du 10 phan tu
+if count >= 10: goto done
+store value; count++
+\end{lstlisting}
+
+\subsection{Tính hệ số Wiener (compute\_wiener)}
+
+Sử dụng thanh ghi dấu phẩy động \texttt{\$f16}--\texttt{\$f22} để lưu các
+tổng tương quan. Toàn bộ phép tính dùng lệnh single-precision:
+\texttt{mul.s}, \texttt{add.s}, \texttt{sub.s}, \texttt{div.s}.
+
+\begin{lstlisting}[language={}, caption={Pseudo-code tính Wiener-Hopf}]
+r0 = sum(x[n]^2, n=0..N-1) / N
+r1 = sum(x[n]*x[n-1], n=1..N-1) / N
+gd0 = sum(d[n]*x[n], n=0..N-1) / N
+gd1 = sum(d[n]*x[n-1], n=1..N-1) / N
+
+det = r0*r0 - r1*r1
+h0 = (r0*gd0 - r1*gd1) / det    -> luu vao optimize_coefficient[0]
+h1 = (r0*gd1 - r1*gd0) / det    -> luu vao optimize_coefficient[1]
+\end{lstlisting}
+
+\subsection{Định dạng số thực (fmt\_float\_w)}
+
+MARS không có syscall in số thực với độ rộng trường tùy ý. Nhóm em
+giải quyết bằng cách chuyển về số nguyên:
+
+\begin{enumerate}
+  \item $\texttt{rounded\_int} = \lfloor |val| \times 10000 + 0.5 \rfloor$
+        (dùng lệnh \texttt{floor.w.s}).
+  \item $\texttt{int\_part} = \texttt{rounded\_int} \div 10000$,\quad
+        $\texttt{frac\_part} = \texttt{rounded\_int} \bmod 10000$.
+  \item Xây dựng chuỗi \texttt{['-'] chữ\_số\_nguyên '.' 4\_chữ\_số\_lẻ}
+        trong buffer \texttt{num\_buf}.
+  \item Thêm khoảng trắng bên trái để đủ độ rộng trường yêu cầu.
+  \item In đồng thời ra console (syscall 4) và file (syscall 15).
+\end{enumerate}
+
+\subsection{Mở file và ghi output.txt}
+
+MARS dùng hệ cờ file riêng, khác với Linux POSIX:
+
+\begin{lstlisting}[language={}, caption={Mở file output.txt trong MARS}]
+# DUNG: MARS dung gia tri 1 cho che do ghi
+li   $a1, 1      # 1 = write-only, tu dong tao/xoa cu
+li   $v0, 13     # syscall open
+syscall
+
+# SAI (Linux POSIX, khong hoat dong trong MARS):
+# li $a1, 0x241  # O_WRONLY | O_CREAT | O_TRUNC
+\end{lstlisting}
+
+% =================================================================
+\section{Các lỗi gặp phải và cách khắc phục}
+% =================================================================
+
+Trong quá trình phát triển và kiểm thử, em gặp 3 lỗi nghiêm trọng
+và đã tìm ra nguyên nhân gốc rễ để sửa.
+
+\subsection{Lỗi 1: Crash do địa chỉ bộ nhớ không căn chỉnh}
+
+\textbf{Triệu chứng:} Chương trình dừng ngay khi chạy với thông báo lỗi
+\textit{``store address not aligned on word boundary 0x10010021''}.
+
+\textbf{Nguyên nhân:} Ba chuỗi tên file (\texttt{desired.txt},
+\texttt{input.txt}, \texttt{output.txt}) có độ dài lần lượt là 12, 10,
+11 byte (tổng 33 byte -- không chia hết cho 4). Chỉ thị \texttt{.space}
+sau đó bị đặt tại địa chỉ lẻ (0x...21), khiến mọi lệnh \texttt{s.s}
+(store float) đều crash.
+
+\textbf{Cách sửa:} Thêm \texttt{.align~2} trước \texttt{desired\_signal}
+để MARS tự động chèn padding đến địa chỉ chia hết cho 4.
+
+\subsection{Lỗi 2: Đọc số thực sai (phần thập phân bị nhân 10)}
+
+\textbf{Triệu chứng:} Ví dụ số \texttt{3.6} được nạp vào mảng là
+\texttt{9.0}, số \texttt{-1.0} trở thành \texttt{-1.0} (may mắn đúng
+vì phần lẻ là 0).
+
+\textbf{Nguyên nhân:} Đoạn code khởi tạo \texttt{scale}:
+\begin{lstlisting}[language={}]
+    div.s $f3, $f4, $f3   # TINH 10.0 / 10.0 = 1.0  (SAI!)
+\end{lstlisting}
+Thứ tự toán hạng bị đảo ngược, cho ra \texttt{scale = 1.0} thay vì \texttt{0.1}.
+Vì vậy chữ số thập phân đầu tiên được nhân với 1.0, kết quả là
+$3 + 6 \times 1.0 = 9.0$ thay vì $3 + 6 \times 0.1 = 3.6$.
+
+\textbf{Cách sửa:} Thêm hằng số \texttt{CONST\_ONE: .float 1.0}, rồi:
+\begin{lstlisting}[language={}]
+    l.s   $f3, CONST_ONE   # f3 = 1.0
+    l.s   $f4, CONST_TEN   # f4 = 10.0
+    div.s $f3, $f3, $f4    # f3 = 0.1 (DUNG)
+\end{lstlisting}
+
+\subsection{Lỗi 3: Không tạo được file output.txt}
+
+\textbf{Triệu chứng:} Chạy xong không thấy file \texttt{output.txt} xuất
+hiện trong thư mục.
+
+\textbf{Nguyên nhân:} Dùng cờ Linux (\texttt{0x241 = O\_WRONLY|O\_CREAT|O\_TRUNC})
+cho syscall mở file, nhưng MARS dùng hệ số khác: \texttt{1} = ghi
+(tự tạo/xóa cũ), \texttt{0} = đọc.
+
+\textbf{Cách sửa:} Thay \texttt{li \$a1, 0x241} bằng \texttt{li \$a1, 1}.
+
+% =================================================================
+\section{Xử lý các trường hợp biên}
+% =================================================================
+
+Ngoài luồng chính, em có bổ sung thêm các kiểm tra sau để chương
+trình không bị crash hay cho kết quả sai trong các tình huống đặc biệt:
+
+\begin{table}[H]
+  \centering
+  \caption{Các trường hợp biên và cách xử lý}
+  \label{tab:edge-cases}
+  \begin{tabularx}{\linewidth}{lXl}
+    \toprule
+    \textbf{Trường hợp} & \textbf{Mô tả / Nguyên nhân cần xử lý} & \textbf{Kết quả} \\
+    \midrule
+    Kích thước không khớp
+      & Hai file có số phần tử khác nhau
+      & In lỗi, thoát \\
+    File rỗng (N=0)
+      & Kích thước $0 = 0$ qua được size check,
+        nhưng \texttt{compute\_wiener} sẽ chia cho $N=0$ (NaN)
+      & In lỗi, thoát \\
+    N=1
+      & Không có mẫu $x(n-1)$, nên $r_1 = 0$, $g_{d1} = 0$;
+        bộ lọc thoái hóa về $h_1 = 0$
+      & Tính được \\
+    Input $=$ Desired
+      & Bộ lọc tái tạo hoàn hảo, $y(n) = d(n)$
+      & MMSE $= 0.0$ \\
+    Toàn giá trị âm
+      & Dấu âm được xử lý đúng trong parser
+      & Tính được \\
+    File có $> 10$ phần tử
+      & Mảng chỉ có 40 byte (10 float), ghi thêm sẽ tràn
+      & Chỉ đọc 10 phần tử đầu, dừng an toàn \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+Riêng trường hợp $N = 0$: sau khi kiểm tra kích thước bằng nhau, chương
+trình kiểm tra thêm \texttt{beqz \$t0, pr\_size\_err} để chuyển sang
+khối xử lý lỗi trước khi bước vào \texttt{compute\_wiener}.
+
+% =================================================================
+\section{Kết quả kiểm thử}
+% =================================================================
+
+\subsection{Bộ testcase được cung cấp (5 testcases)}
+
+Tín hiệu mong muốn \texttt{desired.txt} dùng chung cho cả 5 testcase:
+\begin{center}
+  \texttt{0.0 \; 3.6 \; 4.6 \; 2.3 \; -1.0 \; -2.3 \; -0.3 \; 3.5 \; 6.3 \; 6.0}
+\end{center}
+
+\begin{table}[H]
+  \centering
+  \caption{Kết quả chạy 5 testcase chính}
+  \label{tab:tc-results}
+  \begin{tabularx}{\linewidth}{cXc}
+    \toprule
+    \textbf{TC} & \textbf{Tín hiệu đầu ra (\texttt{Filtered output})} & \textbf{MMSE} \\
+    \midrule
+    1 & \texttt{1.3994\ \ 2.3826\ \ 3.5935\ \ 1.1295\ -0.9636}\\
+      & \texttt{-3.7382\ -2.5666\ \ 4.3414\ \ 5.3050\ \ 4.1137} & 1.8287 \\
+    \midrule
+    2 & \texttt{-0.1159\ \ 4.0982\ \ 2.3170\ \ 1.8235\ \ 0.9891}\\
+      & \texttt{\ 2.3268\ \ 0.3964\ -0.8631\ \ 0.9514\ \ 4.1844} & 8.2490 \\
+    \midrule
+    3 & \texttt{\ 0.6155\ \ 3.3284\ \ 5.4969\ \ 3.5317\ \ 0.6312}\\
+      & \texttt{-0.1889\ \ 1.3101\ \ 3.2672\ \ 5.4439\ \ 4.4333} & 1.5726 \\
+    \midrule
+    4 & \texttt{-1.4757\ \ 2.9779\ \ 3.0827\ -0.7328\ \ 0.5656}\\
+      & \texttt{-3.5762\ -3.1946\ \ 1.0424\ \ 4.1019\ \ 5.8285} & 3.7424 \\
+    \midrule
+    5 & \texttt{-0.3512\ -2.5119\ \ 2.9043\ \ 1.6105\ \ 0.7544}\\
+      & \texttt{-0.6135\ -1.8629\ \ 3.4794\ \ 3.7304\ \ 5.3390} & 5.6235 \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+Cả 5 testcase đều chạy thành công và xuất ra đúng định dạng yêu cầu
+(field width 8 cho giá trị đầu, 10 cho các giá trị sau, 4 chữ số thập
+phân). Nội dung file \texttt{output.txt} khớp hoàn toàn với nội dung
+in ra terminal.
+
+\subsection{Kiểm thử trường hợp biên}
+
+\begin{table}[H]
+  \centering
+  \caption{Kết quả kiểm thử edge cases}
+  \label{tab:ec-results}
+  \begin{tabularx}{\linewidth}{cllX}
+    \toprule
+    \textbf{EC} & \textbf{Đầu vào} & \textbf{Expected} & \textbf{Kết quả thực tế} \\
+    \midrule
+    1 & 3 desired, 5 input
+      & In lỗi
+      & \texttt{Error: size not match} ✓ \\
+    2 & 2 file rỗng (N=0)
+      & In lỗi
+      & \texttt{Error: size not match} ✓ \\
+    3 & N=1: desired=\{2.0\}, input=\{1.0\}
+      & Tính được
+      & \texttt{Filtered output:\ \ 2.0000 / MMSE: 0.0000} ✓ \\
+    4 & Input $=$ Desired (10 phần tử 1--10)
+      & MMSE=0
+      & \texttt{MMSE: 0.0000} ✓ \\
+    5 & Toàn giá trị âm (5 phần tử)
+      & Tính được
+      & \texttt{-1.5121\ -2.3257\ -3.1105\ -3.8953\ -4.6801} / \texttt{MMSE: 0.0988} ✓ \\
+    6 & TC1 lại sau khi thêm edge case guards
+      & Không đổi
+      & Kết quả giống TC1, không có regression ✓ \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+% =================================================================
+\section{Kết luận}
+% =================================================================
+
+Sau quá trình thực hiện, em đã hoàn thành bài tập với đầy đủ các
+yêu cầu của đề bài:
+
+\begin{itemize}
+  \item Đọc và phân tích số thực từ file văn bản (tự viết parser vì MARS
+        không hỗ trợ đọc float trực tiếp từ file).
+  \item Tính hệ số tối ưu $h_0$, $h_1$ theo phương trình Wiener-Hopf
+        sử dụng hoàn toàn lệnh dấu phẩy động của MIPS.
+  \item Lọc tín hiệu và tính MMSE.
+  \item Xuất kết quả đúng định dạng yêu cầu (field width, 4 chữ số thập phân).
+  \item Xử lý đầy đủ các trường hợp biên: kích thước không khớp, file
+        rỗng, tràn mảng.
+  \item Ghi kết quả đồng thời ra terminal và file \texttt{output.txt}.
+\end{itemize}
+
+Qua bài tập này, em hiểu sâu hơn về các vấn đề thực tế khi lập trình
+hợp ngữ mà lập trình bậc cao thường che giấu: căn chỉnh địa chỉ bộ nhớ,
+sự khác biệt giữa các syscall của MARS và Linux, quản lý stack frame khi
+gọi hàm lồng nhau, và cách biểu diễn số thực IEEE 754 trong thanh ghi
+FPU của MIPS.
+
+\end{document}
